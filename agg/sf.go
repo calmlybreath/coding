@@ -143,7 +143,7 @@ func (g *Singleflight) ClearStat() {
 // results when they are ready.
 //
 // The returned channel will not be closed.
-func (g *Singleflight) DoChan(key string, fn func() (interface{}, error)) <-chan Result {
+func (g *Singleflight) DoChan(key interface{}, fn func() (interface{}, error)) <-chan Result {
 	ch := make(chan Result, 1)
 	g.mu.Lock()
 	if g.m == nil {
@@ -232,7 +232,7 @@ func (g *Singleflight) doCall(c *call, key interface{}, fn func() (interface{}, 
 // Forget tells the singleflight to forget about a key.  Future calls
 // to Do for this key will call the function rather than waiting for
 // an earlier call to complete.
-func (g *Singleflight) Forget(key string) {
+func (g *Singleflight) Forget(key interface{}) {
 	g.mu.Lock()
 	delete(g.m, key)
 	g.mu.Unlock()

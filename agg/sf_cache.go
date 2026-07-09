@@ -1,55 +1,53 @@
 package agg
 
-import (
-	"time"
-)
+import "time"
 
-type SFCache struct {
+// SingleflightCache 在普通缓存之上叠加 singleflight:缓存未命中时,
+// 同一个 key 的并发回源只会执行一次 fn,避免缓存击穿。
+type SingleflightCache struct {
 	singleflight Singleflight
-	cache        ICache
+	cache        Cacher
 	expiration   time.Duration
 }
 
-// new
-func NewSFCache(cache ICache, expiration time.Duration) *SFCache {
+// NewSingleflightCache 构造。expiration 必须大于 0。
+func NewSingleflightCache(cache Cacher, expiration time.Duration) *SingleflightCache {
 	if expiration == 0 {
 		panic("expiration must > 0")
 	}
-	return &SFCache{
+	return &SingleflightCache{
 		cache:        cache,
 		singleflight: Singleflight{},
 		expiration:   expiration,
 	}
 }
 
-func (this *SFCache) Get(key interface{}, fn func() (interface{}, error)) (interface{}, error) {
-	cachedValue, err := this.cache.Get(key)
-	if err == nil {
+// Get 取 key:命中缓存直接返回;未命中则用 singleflight 包裹 fn 回源并写缓存。
+func (c *SingleflightCache) Get(key interface{}, fn func() (interface{}, error)) (interface{}, error) {
+	if cachedValue, err := c.cache.Get(key); err == nil {
 		return cachedValue, nil
 	}
-	value, err, _ :=
-		this.singleflight.Do(key, func() (interface{}, error) {
-			v, err := fn()
-			if err != nil {
-				return nil, err
-			}
-			this.cache.SetWithExpire(key, v, this.expiration)
-			return v, nil
-		},
-		)
+	value, err, _ := c.singleflight.Do(key, func() (interface{}, error) {
+		v, err := fn()
+		if err != nil {
+			return nil, err
+		}
+		c.cache.SetWithExpire(key, v, c.expiration)
+		return v, nil
+	})
 	return value, err
 }
 
-type SFCacheStat struct {
+// SingleflightCacheStats 是 SingleflightCache 的统计快照。
+type SingleflightCacheStats struct {
 	SingleflightStat
 	CacheHitRate float64
 }
 
-func (this *SFCache) StatAndClear() SFCacheStat {
-	sfStat := this.singleflight.StatAndClear()
-	cacheHitRate := this.cache.HitRate()
-	return SFCacheStat{
-		SingleflightStat: sfStat,
-		CacheHitRate:     cacheHitRate,
+// StatAndClear 返回统计并清零。
+func (c *SingleflightCache) StatAndClear() SingleflightCacheStats {
+	return SingleflightCacheStats{
+		SingleflightStat: c.singleflight.StatAndClear(),
+		CacheHitRate:     c.cache.HitRate(),
 	}
 }

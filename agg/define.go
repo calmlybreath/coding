@@ -7,55 +7,48 @@ import (
 	"github.com/bluele/gcache"
 )
 
-type IAgg interface {
-	SubmitAndWait(ctx context.Context, items []interface{}) (item2Res map[interface{}]interface{}, err error)
-}
-
-type ICache interface {
+// Cacher 是缓存抽象,BatchCache / SingleflightCache 都基于它。
+type Cacher interface {
 	SetWithExpire(key, value interface{}, expiration time.Duration) error
 	Get(key interface{}) (interface{}, error)
 	HitRate() float64
 }
 
-type IImportantKey interface {
+// ImportantKeyChecker 判断一个 key 是否"重要":重要 key 走独立缓存,不会被普通 LFU/LRU 淘汰。
+type ImportantKeyChecker interface {
 	IsImportant(ctx context.Context, key interface{}) bool
 }
 
-type ImportantStringKeyImpl struct {
+// ImportantStringKey 是 ImportantKeyChecker 的 string-key 实现。
+type ImportantStringKey struct {
 	keys map[string]struct{}
 }
 
-// new
-func NewImportStringKeyImpl(keys []string) *ImportantStringKeyImpl {
+// NewImportantStringKey 用一组重要 key 构造。
+func NewImportantStringKey(keys []string) *ImportantStringKey {
 	km := make(map[string]struct{})
 	for _, k := range keys {
 		km[k] = struct{}{}
 	}
-	return &ImportantStringKeyImpl{
-		keys: km,
-	}
-}
-func (this *ImportantStringKeyImpl) IsImportant(ctx context.Context, dynString interface{}) bool {
-	if _, ok := this.keys[dynString.(string)]; ok {
-		return true
-	}
-	return false
+	return &ImportantStringKey{keys: km}
 }
 
+func (k *ImportantStringKey) IsImportant(ctx context.Context, key interface{}) bool {
+	_, ok := k.keys[key.(string)]
+	return ok
+}
+
+// Cache 包装 gcache.Cache,提供 Cacher 语义。
 type Cache struct {
 	gcache.Cache
 }
 
-// new lfu
+// NewLFUCache 构造一个 LFU 缓存。
 func NewLFUCache(size int) *Cache {
-	return &Cache{
-		Cache: gcache.New(size).LFU().Build(),
-	}
+	return &Cache{Cache: gcache.New(size).LFU().Build()}
 }
 
-// new lru
+// NewLRUCache 构造一个 LRU 缓存。
 func NewLRUCache(size int) *Cache {
-	return &Cache{
-		Cache: gcache.New(size).LRU().Build(),
-	}
+	return &Cache{Cache: gcache.New(size).LRU().Build()}
 }
