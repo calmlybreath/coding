@@ -1,4 +1,4 @@
-package agg
+package singleflight
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 	"github.com/bluele/gcache"
 )
 
-// TestSingleflightCacheBasic:首次 Get 走 fn,第二次命中缓存不再走 fn。
-func TestSingleflightCacheBasic(t *testing.T) {
-	sfc := NewSingleflightCache(gcache.New(100).LFU().Build(), time.Second)
+// TestCacheBasic:首次 Get 走 fn,第二次命中缓存不再走 fn。
+func TestCacheBasic(t *testing.T) {
+	c := NewCache(gcache.New(100).LFU().Build(), time.Second)
 
 	key := "room_1"
-	v, err := sfc.Get(key, func() (interface{}, error) {
+	v, err := c.Get(key, func() (interface{}, error) {
 		return fmt.Sprintf("res_%v", key), nil
 	})
 	if err != nil {
@@ -26,7 +26,7 @@ func TestSingleflightCacheBasic(t *testing.T) {
 	}
 
 	// 第二次:应命中缓存,fn 不应被执行。
-	v2, err := sfc.Get(key, func() (interface{}, error) {
+	v2, err := c.Get(key, func() (interface{}, error) {
 		t.Error("fn should not run on cache hit")
 		return "wrong", nil
 	})
@@ -38,9 +38,9 @@ func TestSingleflightCacheBasic(t *testing.T) {
 	}
 }
 
-// TestSingleflightCacheSingleflight:并发同 key Get,fn 只应被执行一次。
-func TestSingleflightCacheSingleflight(t *testing.T) {
-	sfc := NewSingleflightCache(gcache.New(100).LFU().Build(), time.Second)
+// TestCacheSingleflight:并发同 key Get,fn 只应被执行一次。
+func TestCacheSingleflight(t *testing.T) {
+	c := NewCache(gcache.New(100).LFU().Build(), time.Second)
 
 	var calls int64
 	const goroutines = 20
@@ -51,7 +51,7 @@ func TestSingleflightCacheSingleflight(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, _ = sfc.Get("hot", func() (interface{}, error) {
+			_, _ = c.Get("hot", func() (interface{}, error) {
 				atomic.AddInt64(&calls, 1)
 				time.Sleep(50 * time.Millisecond) // 故意慢,放大并发窗口
 				return "v", nil

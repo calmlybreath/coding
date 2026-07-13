@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bluele/gcache"
+	"tools/singleflight"
 )
 
 type batchCacheStat struct {
@@ -18,13 +19,13 @@ type batchCacheStat struct {
 // BatchCache = 批量聚合(Aggregator) + 防击穿(singleflight) + 缓存(cache)。
 // 在不增加下游 QPS 的前提下,把短时间内的多个 mget 攒成一批、去重、缓存复用。
 type BatchCache struct {
-	agg          Agg
-	singleflight Singleflight
-	stat         batchCacheStat
+	agg   Agg
+	group singleflight.Group
+	stat  batchCacheStat
 
-	normalCache       Cacher
+	normalCache       singleflight.Cacher
 	importantKey      ImportantKeyChecker
-	importantKeyCache Cacher
+	importantKeyCache singleflight.Cacher
 
 	cacheExpiration      time.Duration
 	ignoreKeyResNotExist bool
@@ -42,8 +43,8 @@ func NewBatchCacheNoCache(ctx context.Context, mget MGetter) (*BatchCache, error
 		return nil, err
 	}
 	return &BatchCache{
-		agg:          a,
-		singleflight: Singleflight{},
+		agg:   a,
+		group: singleflight.Group{},
 	}, nil
 }
 
@@ -88,7 +89,7 @@ func NewBatchCacheWithImportantKey(
 		return nil, err
 	}
 
-	var normalCache Cacher
+	var normalCache singleflight.Cacher
 	if useNormalCache {
 		normalCache = gcache.New(cacheSize).LFU().Build()
 	}
@@ -105,9 +106,9 @@ func NewBatchCacheWithImportantKey(
 // NewCustomBatchCache 完全自定义:自带 Aggregator、缓存、ImportantKeyChecker。
 func NewCustomBatchCache(
 	agg Agg,
-	normalCache Cacher,
+	normalCache singleflight.Cacher,
 	importantKey ImportantKeyChecker,
-	importantKeyCache Cacher,
+	importantKeyCache singleflight.Cacher,
 	cacheExpiration time.Duration,
 	ignoreKeyResNotExist bool,
 ) *BatchCache {
@@ -117,7 +118,7 @@ func NewCustomBatchCache(
 		importantKey:         importantKey,
 		importantKeyCache:    importantKeyCache,
 		cacheExpiration:      cacheExpiration,
-		singleflight:         Singleflight{},
+		group:                singleflight.Group{},
 		ignoreKeyResNotExist: ignoreKeyResNotExist,
 	}
 }
@@ -174,7 +175,7 @@ func (c *BatchCache) MGet(ctx context.Context, keys []interface{}) (map[interfac
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, err, _ := c.singleflight.Do(key, func() (interface{}, error) {
+			res, err, _ := c.group.Do(key, func() (interface{}, error) {
 				key2Res, err := c.agg.SubmitAndWait(ctx, []interface{}{key})
 				if err != nil {
 					return nil, fmt.Errorf("agg.SubmitAndWait failed: key(%s), err(%w)", key, err)

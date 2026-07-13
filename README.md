@@ -2,13 +2,16 @@
 
 个人后端工具集,解决批量拉取场景下的几个常见痛点:下游 QPS 放大、缓存击穿、多级依赖查询的 N+1。
 
-- `agg` —— 时间窗口批量聚合(Aggregator + singleflight + cache)
+- `agg` —— 时间窗口批量聚合(`Aggregator` + `BatchCache`)
+- `singleflight` —— 去重原语(`Group`)及在其上的防击穿缓存(`Cache`)
 - `querier` —— 分阶段 DAG 批量查询编排
 - `task` —— 极简的 future/promise
 
+依赖方向:`agg` 依赖 `singleflight`;`querier`、`task` 独立。
+
 ## agg
 
-把短时间内的多个 mget 请求**按时间窗口攒成一批**打下游,降低下游 QPS;叠加 singleflight 防击穿、cache 命中复用。与 `x/sync/singleflight` 只去重 in-flight 请求不同,Aggregator 会跨调用方按窗口批量。
+把短时间内的多个 mget 请求**按时间窗口攒成一批**打下游,降低下游 QPS;叠加 singleflight 防击穿、cache 命中复用。与 `x/sync/singleflight` 只去重 in-flight 请求不同,`Aggregator` 会跨调用方按窗口批量。
 
 ### 最常用:Aggregator + lfu cache + singleflight
 
@@ -35,12 +38,7 @@ res, err := bc.MGet(ctx, []interface{}{"room_1", "room_2"})
 | `NewBatchCacheWithImportantKey` | `NewBatchCache` + 重要 key 独立缓存(热 key 不被 LFU 淘汰) |
 | `NewCustomBatchCache` | 全自定义(自带 Aggregator / cache / ImportantKeyChecker) |
 
-如果只想要 singleflight + cache(不跨调用方批量),用更轻的 `SingleflightCache`:
-
-```go
-sc := agg.NewSingleflightCache(cache, 10*time.Second)
-v, err := sc.Get(key, func() (interface{}, error) { /* 回源 */ })
-```
+缓存参数类型是 `singleflight.Cacher`(`gcache.Cache` 开箱即满足)。
 
 ### 行为要点
 
@@ -48,6 +46,26 @@ v, err := sc.Get(key, func() (interface{}, error) { /* 回源 */ })
 - **失败语义**:任意一个 key 出错或 ctx 取消,`SubmitAndWait`/`MGet` 立即返回该错误,不返回部分结果(整批成功或整批失败)。
 - `IgnoreKeyResNotExist=true` 时,下游结果里不存在的 key 当 nil 返回而非报错。
 - `Stat()` 返回的统计快照全部原子读取,可安全在其它 goroutine 调用。
+
+## singleflight
+
+`Group` 是 `golang.org/x/sync/singleflight.Group` 的派生版,额外加了 `Stat`/`StatAndClear` 统计。并发同 key 的调用只执行一次,其它等结果。
+
+```go
+import "tools/singleflight"
+
+var g singleflight.Group
+v, err, shared := g.Do(key, func() (interface{}, error) { /* 回源 */ })
+```
+
+如果只想要 singleflight + cache(不跨调用方批量),用更轻的 `Cache`:
+
+```go
+import "tools/singleflight"
+
+c := singleflight.NewCache(cache, 10*time.Second) // cache 需满足 singleflight.Cacher
+v, err := c.Get(key, func() (interface{}, error) { /* 未命中时回源,并发只执行一次 */ })
+```
 
 ## querier
 

@@ -1,18 +1,6 @@
 package agg
 
-import (
-	"context"
-	"time"
-
-	"github.com/bluele/gcache"
-)
-
-// Cacher 是缓存抽象,BatchCache / SingleflightCache 都基于它。
-type Cacher interface {
-	SetWithExpire(key, value interface{}, expiration time.Duration) error
-	Get(key interface{}) (interface{}, error)
-	HitRate() float64
-}
+import "context"
 
 // ImportantKeyChecker 判断一个 key 是否"重要":重要 key 走独立缓存,不会被普通 LFU/LRU 淘汰。
 type ImportantKeyChecker interface {
@@ -36,19 +24,4 @@ func NewImportantStringKey(keys []string) *ImportantStringKey {
 func (k *ImportantStringKey) IsImportant(ctx context.Context, key interface{}) bool {
 	_, ok := k.keys[key.(string)]
 	return ok
-}
-
-// Cache 包装 gcache.Cache,提供 Cacher 语义。
-type Cache struct {
-	gcache.Cache
-}
-
-// NewLFUCache 构造一个 LFU 缓存。
-func NewLFUCache(size int) *Cache {
-	return &Cache{Cache: gcache.New(size).LFU().Build()}
-}
-
-// NewLRUCache 构造一个 LRU 缓存。
-func NewLRUCache(size int) *Cache {
-	return &Cache{Cache: gcache.New(size).LRU().Build()}
 }
