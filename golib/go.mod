@@ -4,5 +4,6 @@ go 1.20
 
 require (
 	github.com/bluele/gcache v0.0.2
+	github.com/go-redis/redis/v7 v7.4.1
 	golang.org/x/sync v0.1.0
 )

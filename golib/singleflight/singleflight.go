@@ -3,8 +3,10 @@
 // license that can be found in the LICENSE file.
 
 // Package singleflight provides a duplicate function call suppression
-// mechanism.
-package agg
+// mechanism: concurrent calls with the same key share a single execution.
+//
+// 本文件派生自 golang.org/x/sync/singleflight,额外加了 Stat 统计。
+package singleflight
 
 import (
 	"bytes"
@@ -53,7 +55,7 @@ func newPanicError(v interface{}) error {
 	return &panicError{value: v, stack: stack}
 }
 
-// call is an in-flight or completed singleflight.Do call
+// call is an in-flight or completed Group.Do call
 type call struct {
 	wg sync.WaitGroup
 
@@ -69,17 +71,18 @@ type call struct {
 	chans []chan<- Result
 }
 
-type SingleflightStat struct {
+// GroupStat 是 Group 的统计快照。
+type GroupStat struct {
 	DoNum    uint64
-	MergeNum uint64 //合并了多少次请求
+	MergeNum uint64 // 合并了多少次请求
 }
 
-// Singleflight represents a class of work and forms a namespace in
+// Group represents a class of work and forms a namespace in
 // which units of work can be executed with duplicate suppression.
-type Singleflight struct {
+type Group struct {
 	mu   sync.Mutex            // protects m
 	m    map[interface{}]*call // lazily initialized
-	stat SingleflightStat
+	stat GroupStat
 }
 
 // Result holds the results of Do, so they can be passed
@@ -95,7 +98,7 @@ type Result struct {
 // time. If a duplicate comes in, the duplicate caller waits for the
 // original to complete and receives the same results.
 // The return value shared indicates whether v was given to multiple callers.
-func (g *Singleflight) Do(key interface{}, fn func() (interface{}, error)) (v interface{}, err error, shared bool) {
+func (g *Group) Do(key interface{}, fn func() (interface{}, error)) (v interface{}, err error, shared bool) {
 	atomic.AddUint64(&g.stat.DoNum, 1)
 	g.mu.Lock()
 	if g.m == nil {
@@ -123,18 +126,20 @@ func (g *Singleflight) Do(key interface{}, fn func() (interface{}, error)) (v in
 	return c.val, c.err, c.dups > 0
 }
 
-func (g *Singleflight) StatAndClear() SingleflightStat {
+// StatAndClear 返回统计并清零。
+func (g *Group) StatAndClear() GroupStat {
 	s := g.Stat()
 	g.ClearStat()
 	return s
 }
 
-func (g *Singleflight) Stat() SingleflightStat {
-	stat := g.stat
-	return stat
+// Stat 返回统计快照。
+func (g *Group) Stat() GroupStat {
+	return g.stat
 }
 
-func (g *Singleflight) ClearStat() {
+// ClearStat 清零统计。
+func (g *Group) ClearStat() {
 	atomic.StoreUint64(&g.stat.DoNum, 0)
 	atomic.StoreUint64(&g.stat.MergeNum, 0)
 }
@@ -143,7 +148,7 @@ func (g *Singleflight) ClearStat() {
 // results when they are ready.
 //
 // The returned channel will not be closed.
-func (g *Singleflight) DoChan(key string, fn func() (interface{}, error)) <-chan Result {
+func (g *Group) DoChan(key interface{}, fn func() (interface{}, error)) <-chan Result {
 	ch := make(chan Result, 1)
 	g.mu.Lock()
 	if g.m == nil {
@@ -166,7 +171,7 @@ func (g *Singleflight) DoChan(key string, fn func() (interface{}, error)) <-chan
 }
 
 // doCall handles the single call for a key.
-func (g *Singleflight) doCall(c *call, key interface{}, fn func() (interface{}, error)) {
+func (g *Group) doCall(c *call, key interface{}, fn func() (interface{}, error)) {
 	normalReturn := false
 	recovered := false
 
@@ -229,10 +234,10 @@ func (g *Singleflight) doCall(c *call, key interface{}, fn func() (interface{}, 
 	}
 }
 
-// Forget tells the singleflight to forget about a key.  Future calls
+// Forget tells the Group to forget about a key.  Future calls
 // to Do for this key will call the function rather than waiting for
 // an earlier call to complete.
-func (g *Singleflight) Forget(key string) {
+func (g *Group) Forget(key interface{}) {
 	g.mu.Lock()
 	delete(g.m, key)
 	g.mu.Unlock()

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=320">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <span class="popup-logo">🧠</span>
+      <h1>英语沉浸</h1>
+    </header>
+
+    <!-- API Settings -->
+    <section class="popup-section">
+      <h2>🔑 API 设置</h2>
+      <label class="popup-label">
+        DeepSeek API Key
+        <input type="password" id="apiKey" class="popup-input"
+               placeholder="sk-xxxxxxxxxxxxxxxx"
+               autocomplete="off">
+      </label>
+      <p class="popup-hint">
+        <a href="https://platform.deepseek.com/api_keys" target="_blank" class="popup-link">获取 API Key →</a>
+        &nbsp;|&nbsp; 极度便宜，每天几分钱
+      </p>
+
+      <details class="popup-details">
+        <summary>高级设置</summary>
+        <label class="popup-label">
+          API Endpoint
+          <input type="text" id="endpoint" class="popup-input"
+                 placeholder="https://api.deepseek.com/chat/completions">
+        </label>
+        <label class="popup-label">
+          Model
+          <input type="text" id="model" class="popup-input"
+                 placeholder="deepseek-v4-flash">
+        </label>
+      </details>
+    </section>
+
+    <hr class="popup-divider">
+
+    <!-- Status -->
+    <section class="popup-section">
+      <h2>⚡ 状态</h2>
+      <div class="popup-toggle-group">
+        <button id="toggleEnable" class="popup-toggle active" data-value="enabled">● 启用</button>
+        <button id="toggleDisable" class="popup-toggle" data-value="disabled">○ 暂停</button>
+      </div>
+    </section>
+
+    <!-- Density -->
+    <section class="popup-section">
+      <h2>📊 替换密度</h2>
+      <div class="popup-density-group">
+        <button class="popup-density" data-value="low">
+          <span class="popup-density-label">低</span>
+          <span class="popup-density-hint">3-5 条</span>
+        </button>
+        <button class="popup-density active" data-value="medium">
+          <span class="popup-density-label">中</span>
+          <span class="popup-density-hint">5-10 条</span>
+        </button>
+        <button class="popup-density" data-value="high">
+          <span class="popup-density-label">高</span>
+          <span class="popup-density-hint">10-20 条</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="popup-actions">
+      <button id="saveBtn" class="popup-btn-primary">💾 保存设置</button>
+    </div>
+
+    <div id="statusMsg" class="popup-status-msg"></div>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <p>刷新页面后生效 · DeepSeek 每次约 ¥0.004</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
