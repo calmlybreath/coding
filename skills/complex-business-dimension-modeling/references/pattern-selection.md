@@ -1,4 +1,4 @@
-# Rule、Config 与 Strategy 边界
+# Rule、Policy、Config 与 Strategy 边界
 
 ## 目录
 
@@ -6,6 +6,7 @@
 - Fact Dimension
 - Parameter / Config
 - Rule
+- Policy
 - Strategy
 - Strategy Method Boundary
 - Rule Placement
@@ -128,7 +129,9 @@ finalPrice := ctx.Amount.Mul(rate)
 - 是否需要拦截；
 - 是否支持某组合。
 
-那么它是规则条件。
+那么它是 Rule 职责。
+
+Rule 首先描述规则语义，不表示每个条件都要创建接口或结构体。同一决策点内的简单 Rule 直接写进 Policy。
 
 例如：
 
@@ -139,7 +142,7 @@ finalPrice := ctx.Amount.Mul(rate)
 - 金卡以下不能领取生日券；
 - 黑名单用户不能下单。
 
-Rule 典型接口：
+当规则需要跨 Policy 复用、独立配置或编排时，才使用接口：
 
 ```go
 type Rule[T any] interface {
@@ -188,13 +191,35 @@ func (r MiniProgramCannotUsePaypalRule) Validate(ctx PaymentContext) error {
 
 判断标准：
 
-> 如果分支结果是 error、true/false、allow/deny、eligible/ineligible，大概率是 Rule。
+> 如果分支结果是 error、true/false、allow/deny、eligible/ineligible，大概率属于 Rule 语义；是否抽类型另行判断。
 
 不要把限制条件建模成 Strategy。
 
 ---
 
-## 5. Strategy
+## 5. Policy
+
+Policy 是一个业务决策点的规则边界，负责规则顺序、短路和结果表达。简单 Rule 可以直接写在 Policy 中：
+
+```go
+type CouponEligibilityPolicy struct{}
+
+func (p CouponEligibilityPolicy) Decide(ctx CouponContext) error {
+    if ctx.MemberLevel.LowerThan(MemberLevelGold) {
+        return errors.New("会员等级不足")
+    }
+    if ctx.Region == RegionOverseas {
+        return errors.New("海外地区不适用")
+    }
+    return nil
+}
+```
+
+Policy 回答的是“依据这些规则，最终是否允许或适用”。当部分 Rule 需要复用或独立配置时，Policy 再组合这些 Rule 类型；不要先把每个 `if` 都拆成 Rule struct。
+
+---
+
+## 6. Strategy
 
 如果某个维度决定了不同算法、流程、外部依赖或生命周期，则它可能是策略分发维度。
 
@@ -245,11 +270,11 @@ func (s GiftPromotionStrategy) Apply(ctx PromotionContext) (PromotionResult, err
 
 ---
 
-## 6. Strategy Method Boundary
+## 7. Strategy Method Boundary
 
 Strategy 的核心约束是单一抽象、高内聚和一致的变化原因，不是接口只能有一个方法。
 
-多个方法可以放在同一 Strategy / Policy 中，但应同时满足：
+多个方法可以放在同一 Strategy 中，但应同时满足：
 
 1. 属于同一业务能力或同一决策点；
 2. 因同一业务原因变化；
@@ -257,7 +282,7 @@ Strategy 的核心约束是单一抽象、高内聚和一致的变化原因，�
 4. 所有实现都必须提供这些方法；
 5. 调用方通常将它们作为一个整体使用。
 
-例如支付的授权、扣款和撤销如果构成不可拆分的统一支付生命周期，而且每种支付实现都必须支持，可以放在同一 `PaymentPolicy` 中。反之，如果退款、对账由不同团队、不同生命周期或不同实现集合负责，就应拆成独立能力接口。
+例如支付的授权、扣款和撤销如果构成不可拆分的统一支付生命周期，而且每种支付实现都必须支持，可以放在同一 `PaymentStrategy` 中。反之，如果退款、对账由不同团队、不同生命周期或不同实现集合负责，就应拆成独立能力接口。
 
 判断信号：
 
@@ -266,51 +291,61 @@ Strategy 的核心约束是单一抽象、高内聚和一致的变化原因，�
 | 方法围绕同一决策点协同完成能力 | 可保留在同一 Strategy |
 | 方法因同一业务原因一起变化 | 可保留在同一 Strategy |
 | 某些实现只能提供部分方法 | 拆成小接口 |
-| 方法属于价格、库存、履约等不同决策点 | 拆成独立 Policy |
+| 方法属于价格、库存、履约等不同决策点 | 拆成独立 Strategy |
 | 调用方只依赖其中一个方法 | 优先暴露更小接口 |
 
 因此不要机械执行“一接口一方法”，也不要用“同一个业务名词”作为塞入多个决策点的理由。
 
 ---
 
-## 7. Rule Placement
+## 8. Rule And Policy Placement
 
-Rule 可以是 Strategy 内部的前置校验，也可以是独立规则。边界取决于规则的复用范围和变化原因。
+判断可以直接写进 Policy，也可以抽成 Rule；依赖 Strategy 内部实现细节的不变量可以留在 Strategy。边界取决于复用范围、变化原因和是否需要独立编排。
+
+直接写进 Policy：
+
+- 属于同一个业务决策点；
+- 逻辑简单且只在该 Policy 使用；
+- 与 Policy 一起变化；
+- 多个判断总是按固定顺序共同完成决策。
+
+此时不要机械地为每个 `if` 创建一个 Rule struct。
 
 保留在 Strategy 内部：
 
-- 规则只对该策略成立；
-- 规则与策略实现一起变化；
-- 规则依赖该策略的内部状态或外部适配器；
-- 单独复用没有业务意义。
+- 判断属于该 Strategy 的实现不变量；
+- 判断依赖该 Strategy 的内部状态或外部适配器；
+- 与 Strategy 实现一起变化，脱离实现没有业务意义。
 
-抽为独立 `Rule` / `Validator`：
+抽为独立 `Rule`：
 
 - 多个策略共享；
 - 需要在策略选择或执行前统一校验；
-- 规则需要独立配置、编排或测试；
+- 规则需要独立配置、审计、替换或编排；
 - 规则与策略具有不同变化原因。
 
-不要为了“Rule 必须外置”而拆散策略内部不变量，也不要把跨策略通用资格判断复制到每个 Strategy。
+独立测试不是充分的拆分理由：Policy 内的简单 Rule 同样可以通过 Policy 测试覆盖。不要为了“Rule 必须外置”而拆散一个决策，也不要把跨 Policy 通用判断复制多份。
+
+Policy 可以直接实现简单 Rule，也可以组合独立 Rule；它不是算法实现。
 
 ---
 
-## 8. Capability Completeness
+## 9. Capability Completeness
 
 小接口用于复用和按需依赖，但业务类型可能要求多种独立能力必须成套出现。例如新增一种商品类型时，必须同时提供：
 
 ```text
-BuyPolicy
-PricePolicy
-InventoryPolicy
-FulfillmentPolicy
+BuyStrategy
+PriceStrategy
+InventoryStrategy
+FulfillmentStrategy
 ```
 
 这些能力属于不同决策点，不应合并成一个万能 Strategy；但如果分别注册，会产生漏注册和运行时才发现缺失的风险。此时使用：
 
 - 组合接口表达“完整能力集”；
 - 编译期接口检查保证方法集完整；
-- `ProductTypeModule` / `ProductPolicyFactory` 等抽象工厂统一创建和注册整套能力。
+- `ProductTypeModule` / `ProductStrategyFactory` 等抽象工厂统一创建和注册整套能力。
 
 原则是：
 
@@ -327,7 +362,8 @@ FulfillmentPolicy
 ```text
 事实是什么，放 Context；
 值是多少，用参数；
-能不能，用规则；
+单个独立判断，用 Rule；
+同一决策点的 Rule，用 Policy 承载；
 怎么算，用策略；
 怎么做，用策略；
 状态怎么变，用状态机；
@@ -336,7 +372,7 @@ FulfillmentPolicy
 只是组合限制，不要做策略；
 只是数值不同，不要做策略。
 Strategy 单一抽象，不是单一方法；
-通用规则外置，内部规则内聚；
+简单 Rule 收进 Policy，复用 Rule 才外置；
 小接口复用，组合接口收束；
 成套能力用抽象工厂。
 ```
@@ -345,7 +381,7 @@ Strategy 单一抽象，不是单一方法；
 
 ## Pattern Selection Details
 
-完成维度建模后，再按以下顺序分析 Rule / Config / Strategy 等模式边界。
+完成维度建模后，再按以下顺序分析 Rule / Policy / Config / Strategy 等模式边界。
 
 ### Step 1: Identify Business Decision Points
 
@@ -398,6 +434,10 @@ orderStatus
 - 规则条件；
 - 策略分发条件；
 - 状态分发条件。
+
+这些角色用于理解职责，不直接决定类型数量。先归类，再判断是否存在独立复用、变化或编排需求。
+
+Policy 不是维度角色；它是同一决策点的规则边界，简单 Rule 可直接实现，复用 Rule 可组合。
 
 注意：
 

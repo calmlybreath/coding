@@ -28,7 +28,7 @@ PENDING_PAYMENT + PaymentSucceeded -> PAID
 - 迁移带有 guard、动作或副作用；
 - 需要处理幂等、重试、补偿或并发。
 
-如果只是根据状态判断某操作是否允许，简单 Rule 可能已经足够。
+如果只是根据状态判断某操作是否允许，把简单 Rule 直接写进对应操作的 Policy 即可。
 
 ## 2. 不要盲目合并多个状态
 
@@ -56,7 +56,7 @@ REFUNDED_RETURNING
 4. 一个状态变化是否必然导致另一个状态变化；
 5. 组合后是否形成稳定且被业务直接使用的阶段概念。
 
-若生命周期可独立变化，应保留多个状态机，并通过 Rule 或 Saga/Process Manager 协调。若组合稳定表达业务阶段，可额外派生 `OrderPhase`，但不要丢失原始状态。
+若生命周期可独立变化，应保留多个状态机，并通过 Policy 或 Saga/Process Manager 协调。若组合稳定表达业务阶段，可额外派生 `OrderPhase`，但不要丢失原始状态。
 
 ```text
 OrderStatus + PaymentStatus + DeliveryStatus

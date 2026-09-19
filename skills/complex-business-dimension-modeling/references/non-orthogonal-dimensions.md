@@ -31,7 +31,7 @@
 
 ### Case 1: Illegal Combination
 
-如果只是非法组合，用 Rule。
+如果只是非法组合，它属于 Rule 语义。简单判断直接放进对应决策点的 Policy，不要每条规则建一个类型。
 
 Examples:
 
@@ -45,9 +45,9 @@ Examples:
 Use:
 
 ```go
-type MiniProgramCannotUsePaypalRule struct{}
+type PaymentAvailabilityPolicy struct{}
 
-func (r MiniProgramCannotUsePaypalRule) Validate(ctx PaymentContext) error {
+func (p PaymentAvailabilityPolicy) Decide(ctx PaymentContext) error {
     if ctx.Channel == ChannelMiniProgram &&
         ctx.PaymentMethod == PaymentMethodPaypal {
         return errors.New("小程序不支持 PayPal")
@@ -205,26 +205,26 @@ Flow:
 ```text
 TaxContext
     ↓
-TaxRuleValidator
+TaxEligibilityPolicy
     ↓
 TaxModelResolver
     ↓
-TaxPolicyFactory
+TaxStrategyFactory
     ↓
-TaxPolicy.Calculate()
+TaxStrategy.Calculate()
 ```
 
 Example:
 
 ```go
 type TaxService struct {
-    RuleValidator  TaxRuleValidator
-    ModelResolver  TaxModelResolver
-    PolicyFactory  TaxPolicyFactory
+    EligibilityPolicy TaxEligibilityPolicy
+    ModelResolver     TaxModelResolver
+    StrategyFactory   TaxStrategyFactory
 }
 
 func (s TaxService) Calculate(ctx TaxContext) (Tax, error) {
-    if err := s.RuleValidator.Validate(ctx); err != nil {
+    if err := s.EligibilityPolicy.Decide(ctx); err != nil {
         return Tax{}, err
     }
 
@@ -233,12 +233,12 @@ func (s TaxService) Calculate(ctx TaxContext) (Tax, error) {
         return Tax{}, err
     }
 
-    policy, err := s.PolicyFactory.Get(model)
+    strategy, err := s.StrategyFactory.Get(model)
     if err != nil {
         return Tax{}, err
     }
 
-    return policy.Calculate(ctx)
+    return strategy.Calculate(ctx)
 }
 ```
 
@@ -256,15 +256,15 @@ Decision Table Example:
 Strategy:
 
 ```go
-type TaxPolicy interface {
+type TaxStrategy interface {
     Calculate(ctx TaxContext) (Tax, error)
 }
 ```
 
 ```go
-type EUDigitalServiceVATPolicy struct{}
+type EUDigitalServiceVATStrategy struct{}
 
-func (p EUDigitalServiceVATPolicy) Calculate(ctx TaxContext) (Tax, error) {
+func (s EUDigitalServiceVATStrategy) Calculate(ctx TaxContext) (Tax, error) {
     // 欧盟数字服务 VAT 算法
     return Tax{}, nil
 }
@@ -287,10 +287,10 @@ This is not blind combination strategy. It is:
 Bad examples:
 
 ```go
-type MainlandNormalGoodsPersonalNormalInvoiceTaxPolicy struct{}
-type MainlandNormalGoodsEnterpriseSpecialInvoiceTaxPolicy struct{}
-type EUDigitalServicePersonalNoInvoiceTaxPolicy struct{}
-type USPhysicalGoodsEnterpriseNormalInvoiceTaxPolicy struct{}
+type MainlandNormalGoodsPersonalNormalInvoiceTaxStrategy struct{}
+type MainlandNormalGoodsEnterpriseSpecialInvoiceTaxStrategy struct{}
+type EUDigitalServicePersonalNoInvoiceTaxStrategy struct{}
+type USPhysicalGoodsEnterpriseNormalInvoiceTaxStrategy struct{}
 ```
 
 如果维度数量是：
@@ -329,11 +329,11 @@ Examples:
 Good examples:
 
 ```go
-type EUDigitalServiceVATPolicy struct{}
-type USSalesTaxPolicy struct{}
-type MainlandIncludedTaxPolicy struct{}
-type CrossBorderImportTaxPolicy struct{}
-type TaxFreePolicy struct{}
+type EUDigitalServiceVATStrategy struct{}
+type USSalesTaxStrategy struct{}
+type MainlandIncludedTaxStrategy struct{}
+type CrossBorderImportTaxStrategy struct{}
+type TaxFreeStrategy struct{}
 ```
 
 判断表：

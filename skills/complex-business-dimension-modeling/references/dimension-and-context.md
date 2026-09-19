@@ -9,9 +9,9 @@
 - 维度拆分流程、判断表与口诀
 
 以下内容优先级高于后文中的模式选择分析。
-在执行 Rule / Config / Strategy 分析之前，必须先执行本节的维度建模分析。
+在执行 Rule / Policy / Config / Strategy 分析之前，必须先执行本节的维度建模分析。
 
-在判断一个维度应该建模为 Context、Rule、Config、Strategy、Pipeline 之前，必须先判断：
+在判断一个维度应该建模为 Context、Rule、Policy、Config、Strategy、Pipeline 之前，必须先判断：
 
 ```text
 这个维度本身拆得是否正确？
@@ -22,7 +22,7 @@
 是否属于当前业务上下文？
 ```
 
-很多设计问题不是出在 Strategy、Rule、Config 的选择上，而是出在：
+很多设计问题不是出在 Strategy、Policy、Rule、Config 的选择上，而是出在：
 
 ```text
 维度边界错误；
@@ -393,9 +393,9 @@ func (f FulfillmentStrategyFactory) Get(form ProductForm) (FulfillmentStrategy, 
 用下层维度处理细规则：
 
 ```go
-type MedicineQualificationRule struct{}
+type FulfillmentEligibilityPolicy struct{}
 
-func (r MedicineQualificationRule) Validate(ctx FulfillmentContext) error {
+func (p FulfillmentEligibilityPolicy) Decide(ctx FulfillmentContext) error {
     if ctx.ProductCategory == ProductCategoryMedicine &&
         !ctx.User.HasMedicineQualification {
         return errors.New("用户缺少药品购买资质")
@@ -530,7 +530,8 @@ Context 应该稳定、明确、可测试。
 | Entity | 表达领域对象生命周期，例如 Order、Product、User |
 | Context | 表达某个决策点需要的事实快照 |
 | Config | 表达参数、阈值、开关 |
-| Rule | 判断能不能 |
+| Rule | 判断条件的业务语义 |
+| Policy | 承载同一决策点的规则 |
 | Strategy | 执行怎么做 |
 
 不要把数据库实体直接当所有策略的上下文。
@@ -538,7 +539,7 @@ Context 应该稳定、明确、可测试。
 Bad:
 
 ```go
-type PricePolicy interface {
+type PriceStrategy interface {
     Calculate(order Order) (Money, error)
 }
 ```
@@ -546,7 +547,7 @@ type PricePolicy interface {
 Good:
 
 ```go
-type PricePolicy interface {
+type PriceStrategy interface {
     Calculate(ctx PriceContext) (Money, error)
 }
 ```
@@ -555,14 +556,14 @@ type PricePolicy interface {
 
 ## 5. 维度拆分分析流程
 
-在做 Rule / Config / Strategy 判断之前，先执行维度拆分分析。
+在做 Rule / Policy / Config / Strategy 判断之前，先执行维度拆分分析。
 
 ### Step 0: Dimension Modeling
 
 必须先回答以下问题：
 
 ```text
-1. 当前有哪些原始业务字段？
+1. 哪些字段参与决策或变化？只被读取、透传或展示的普通数据字段不进入后续维度分析。
 2. 哪些字段其实混合了多个业务含义，需要拆细？
 3. 哪些字段强耦合，总是一起表达一个业务模型，需要合并？
 4. 哪些字段有天然层级，需要建立父子维度？
@@ -574,7 +575,7 @@ type PricePolicy interface {
 然后再进入：
 
 ```text
-Rule / Config / Strategy / Pipeline / State Machine
+Rule / Policy / Config / Strategy / Pipeline / State Machine
 ```
 
 ---
@@ -591,7 +592,7 @@ Rule / Config / Strategy / Pipeline / State Machine
 | 上层决定流程，下层决定参数 | 平铺导致复杂 | 建层级维度 |
 | 所有策略都传巨大 Context | 上下文污染 | 按决策点拆 Context |
 | 策略访问了无关字段 | 职责泄漏 | 缩小 Context |
-| 新增规则要改多个策略 | 规则被塞进策略 | 抽 Rule |
+| 同一判断复制到多个策略 | 缺少共享规则 | 抽 Rule |
 | 新增组合导致策略类暴涨 | 组合爆炸 | 中间模型 / 决策表 |
 
 ---

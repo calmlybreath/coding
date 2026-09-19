@@ -35,23 +35,23 @@ type UserStrategy interface {
 应该拆成：
 
 ```go
-type PricePolicy interface {
+type PriceStrategy interface {
     Calculate(ctx PriceContext) (Money, error)
 }
 
-type CouponEligibilityRule interface {
+type CouponEligibilityPolicy interface {
     Validate(ctx CouponContext) error
 }
 
-type PointPolicy interface {
+type PointStrategy interface {
     Calculate(ctx PointContext) (Point, error)
 }
 
-type InvoiceRule interface {
+type InvoicePolicy interface {
     Validate(ctx InvoiceContext) error
 }
 
-type DeliveryPolicy interface {
+type DeliveryStrategy interface {
     Plan(ctx DeliveryContext) (DeliveryPlan, error)
 }
 ```
@@ -72,14 +72,14 @@ ChannelStrategy
 Prefer:
 
 ```text
-PricePolicy
-TaxPolicy
+PriceStrategy
+TaxStrategy
 PaymentStrategy
-DeliveryPolicy
+DeliveryStrategy
 PromotionStrategy
-CouponEligibilityRule
-InvoiceRule
-PointPolicy
+CouponEligibilityPolicy
+InvoicePolicy
+PointStrategy
 ```
 
 ---
@@ -149,7 +149,7 @@ if ctx.MemberLevel.LowerThan(MemberLevelGold) {
 Example:
 
 ```go
-type MemberBenefitPolicy interface {
+type MemberBenefitStrategy interface {
     Calculate(ctx MemberBenefitContext) (BenefitResult, error)
 }
 ```
@@ -169,25 +169,25 @@ type MemberBenefitPolicy interface {
 如果新增商品类型时需要在多个独立注册表中分别注册：
 
 ```text
-buyPolicies[productType]
-pricePolicies[productType]
-inventoryPolicies[productType]
-fulfillmentPolicies[productType]
+buyStrategies[productType]
+priceStrategies[productType]
+inventoryStrategies[productType]
+fulfillmentStrategies[productType]
 ```
 
 则很容易遗漏其中一项，而且通常要到运行时特定链路才会暴露。
 
 不要用一个包含 Buy、Price、Inventory、Fulfillment 方法的万能 `ProductStrategy` 修补这个问题。这些方法属于不同决策点，变化原因也可能不同。
 
-推荐保持小接口，并通过 `ProductTypeModule` / `ProductPolicyFactory` 在一个装配入口提供完整能力集：
+推荐保持小接口，并通过 `ProductTypeModule` / `ProductStrategyFactory` 在一个装配入口提供完整能力集：
 
 ```text
-ProductPolicyFactory
+ProductStrategyFactory
   -> ProductTypeModule
-       -> BuyPolicy
-       -> PricePolicy
-       -> InventoryPolicy
-       -> FulfillmentPolicy
+       -> BuyStrategy
+       -> PriceStrategy
+       -> InventoryStrategy
+       -> FulfillmentStrategy
 ```
 
 需要区分两个目标：

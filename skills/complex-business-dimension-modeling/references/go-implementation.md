@@ -37,12 +37,12 @@ type PaymentStrategy interface {
 
 ---
 
-## 2. Allow Cohesive Multi-Method Policies
+## 2. Allow Cohesive Multi-Method Strategies
 
 “小接口优先”不等于“接口只能有一个方法”。当多个方法属于同一业务能力、同一变化原因和同一生命周期，而且所有实现都必须提供时，可以使用高内聚的多方法接口。
 
 ```go
-type PaymentLifecyclePolicy interface {
+type PaymentLifecycleStrategy interface {
     Authorize(ctx PaymentContext) (Authorization, error)
     Capture(ctx PaymentContext, auth Authorization) (PayResult, error)
     Void(ctx PaymentContext, auth Authorization) error
@@ -52,11 +52,11 @@ type PaymentLifecyclePolicy interface {
 如果退款和对账不属于所有支付实现，或者具有独立变化原因，则拆开：
 
 ```go
-type RefundPolicy interface {
+type RefundStrategy interface {
     Refund(ctx RefundContext) (RefundResult, error)
 }
 
-type ReconcilePolicy interface {
+type ReconcileStrategy interface {
     Reconcile(ctx ReconcileContext) error
 }
 ```
@@ -64,16 +64,16 @@ type ReconcilePolicy interface {
 策略私有且依赖内部实现细节的前置校验可以保留在实现内部：
 
 ```go
-func (p PaypalPaymentPolicy) Authorize(ctx PaymentContext) (Authorization, error) {
-    if err := p.validateAccount(ctx); err != nil {
+func (s PaypalPaymentStrategy) Authorize(ctx PaymentContext) (Authorization, error) {
+    if err := s.validateAccount(ctx); err != nil {
         return Authorization{}, err
     }
 
-    return p.client.Authorize(ctx)
+    return s.client.Authorize(ctx)
 }
 ```
 
-跨多个支付策略共用的渠道、地区或资格限制应抽为独立 `Rule` / `Validator`，在 Resolver 或 Strategy 执行前统一调用，避免每个实现复制一份。
+跨多个支付 Strategy 共用的渠道、地区或资格限制可抽为 Rule；多个 Rule 共同形成支付资格决策时，再由 `PaymentEligibilityPolicy` 组合。
 
 ---
 
@@ -82,19 +82,19 @@ func (p PaypalPaymentPolicy) Authorize(ctx PaymentContext) (Authorization, error
 调用方应依赖自己真正使用的小接口：
 
 ```go
-type BuyPolicy interface {
+type BuyStrategy interface {
     Buy(ctx BuyContext) (BuyResult, error)
 }
 
-type PricePolicy interface {
+type PriceStrategy interface {
     CalculatePrice(ctx PriceContext) (Money, error)
 }
 
-type InventoryPolicy interface {
+type InventoryStrategy interface {
     Reserve(ctx InventoryContext) error
 }
 
-type FulfillmentPolicy interface {
+type FulfillmentStrategy interface {
     Fulfill(ctx FulfillmentContext) error
 }
 ```
@@ -102,52 +102,52 @@ type FulfillmentPolicy interface {
 如果同一个实现对象必须具备完整能力，可以用组合接口收束：
 
 ```go
-type CompleteProductPolicy interface {
-    BuyPolicy
-    PricePolicy
-    InventoryPolicy
-    FulfillmentPolicy
+type CompleteProductCapabilities interface {
+    BuyStrategy
+    PriceStrategy
+    InventoryStrategy
+    FulfillmentStrategy
 }
 
-type DigitalProductPolicy struct {
-    BuyPolicy
-    PricePolicy
-    InventoryPolicy
-    FulfillmentPolicy
+type DigitalProductCapabilities struct {
+    BuyStrategy
+    PriceStrategy
+    InventoryStrategy
+    FulfillmentStrategy
 }
 
-var _ CompleteProductPolicy = (*DigitalProductPolicy)(nil)
+var _ CompleteProductCapabilities = (*DigitalProductCapabilities)(nil)
 ```
 
 如果这些能力由不同对象实现，使用模块工厂统一提供，而不是分散注册：
 
 ```go
 type ProductTypeModule interface {
-    BuyPolicy() BuyPolicy
-    PricePolicy() PricePolicy
-    InventoryPolicy() InventoryPolicy
-    FulfillmentPolicy() FulfillmentPolicy
+    BuyStrategy() BuyStrategy
+    PriceStrategy() PriceStrategy
+    InventoryStrategy() InventoryStrategy
+    FulfillmentStrategy() FulfillmentStrategy
 }
 
-type ProductPolicyFactory interface {
+type ProductStrategyFactory interface {
     Create(productType ProductType) (ProductTypeModule, error)
 }
 
 type DefaultProductTypeModule struct {
-    buy         BuyPolicy
-    price       PricePolicy
-    inventory   InventoryPolicy
-    fulfillment FulfillmentPolicy
+    buy         BuyStrategy
+    price       PriceStrategy
+    inventory   InventoryStrategy
+    fulfillment FulfillmentStrategy
 }
 
 func NewProductTypeModule(
-    buy BuyPolicy,
-    price PricePolicy,
-    inventory InventoryPolicy,
-    fulfillment FulfillmentPolicy,
+    buy BuyStrategy,
+    price PriceStrategy,
+    inventory InventoryStrategy,
+    fulfillment FulfillmentStrategy,
 ) (ProductTypeModule, error) {
     if buy == nil || price == nil || inventory == nil || fulfillment == nil {
-        return nil, errors.New("incomplete product policy module")
+        return nil, errors.New("incomplete product strategy module")
     }
 
     return &DefaultProductTypeModule{
@@ -158,34 +158,34 @@ func NewProductTypeModule(
     }, nil
 }
 
-func (m *DefaultProductTypeModule) BuyPolicy() BuyPolicy {
+func (m *DefaultProductTypeModule) BuyStrategy() BuyStrategy {
     return m.buy
 }
 
-func (m *DefaultProductTypeModule) PricePolicy() PricePolicy {
+func (m *DefaultProductTypeModule) PriceStrategy() PriceStrategy {
     return m.price
 }
 
-func (m *DefaultProductTypeModule) InventoryPolicy() InventoryPolicy {
+func (m *DefaultProductTypeModule) InventoryStrategy() InventoryStrategy {
     return m.inventory
 }
 
-func (m *DefaultProductTypeModule) FulfillmentPolicy() FulfillmentPolicy {
+func (m *DefaultProductTypeModule) FulfillmentStrategy() FulfillmentStrategy {
     return m.fulfillment
 }
 
 var _ ProductTypeModule = (*DefaultProductTypeModule)(nil)
-var _ ProductPolicyFactory = (*DefaultProductPolicyFactory)(nil)
+var _ ProductStrategyFactory = (*DefaultProductStrategyFactory)(nil)
 ```
 
 注册表只注册完整模块：
 
 ```go
-type DefaultProductPolicyFactory struct {
+type DefaultProductStrategyFactory struct {
     modules map[ProductType]ProductTypeModule
 }
 
-func (f DefaultProductPolicyFactory) Create(
+func (f DefaultProductStrategyFactory) Create(
     productType ProductType,
 ) (ProductTypeModule, error) {
     module, ok := f.modules[productType]
@@ -199,8 +199,8 @@ func (f DefaultProductPolicyFactory) Create(
 
 注意：
 
-- 编译期接口检查只能保证方法集完整，不能保证返回的 Policy 非空；
-- 构造 `ProductTypeModule` 时还需要校验各 Policy 均已提供；
+- 编译期接口检查只能保证方法集完整，不能保证返回的 Strategy 非空；
+- 构造 `ProductTypeModule` 时还需要校验各 Strategy 均已提供；
 - 新增 `ProductType` 时，应在一个装配入口注册完整模块，并用测试覆盖所有枚举值；
 - 不要因为能力必须成套提供，就把不同决策点合并成万能 `ProductStrategy`。
 
