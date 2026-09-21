@@ -6,7 +6,7 @@
 - 合并或派生强耦合维度
 - 建立层级维度
 - 拆分业务 Context
-- 维度拆分流程、判断表与口诀
+- 维度拆分流程与判断表
 
 以下内容优先级高于后文中的模式选择分析。
 在执行 Rule / Policy / Config / Strategy 分析之前，必须先执行本节的维度建模分析。
@@ -556,9 +556,9 @@ type PriceStrategy interface {
 
 ## 5. 维度拆分分析流程
 
-在做 Rule / Policy / Config / Strategy 判断之前，先执行维度拆分分析。
+本文件对应 `SKILL.md` 的 Step 2（识别事实维度）与 Step 3（维度健康度分析）。在做 Rule / Policy / Config / Strategy 判断之前，先执行维度拆分分析。
 
-### Step 0: Dimension Modeling
+### 需要回答的问题
 
 必须先回答以下问题：
 
@@ -597,16 +597,8 @@ Rule / Policy / Config / Strategy / Pipeline / State Machine
 
 ---
 
-## 7. 维度拆分口诀
+## 7. 与 SKILL.md 的关系
 
-```text
-太粗就拆；
-太散就合；
-有父子就分层；
-有组合语义就抽模型；
-不同决策点用不同 Context；
-数据库对象不是决策上下文；
-维度先建对，再谈策略、规则、配置。
-```
+维度建模的核心原则统一维护在 `SKILL.md`，本文件不重复；本文件只保留判断信号、判断表和案例。
 
 ---

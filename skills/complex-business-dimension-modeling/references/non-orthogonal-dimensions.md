@@ -9,7 +9,7 @@
 - 中间业务模型
 - 笛卡尔积策略边界
 
-## Step 5: Handle Non-Orthogonal Dimensions
+## Handle Non-Orthogonal Dimensions
 
 业务维度通常不是完全正交的。
 

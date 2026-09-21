@@ -11,7 +11,6 @@
 - Strategy Method Boundary
 - Rule Placement
 - Capability Completeness
-- Key Distinction Rules
 - Pattern Selection Details
 
 ## 1. Business Decision Point
@@ -355,35 +354,11 @@ FulfillmentStrategy
 
 ---
 
-## Key Distinction Rules
-
-使用以下口诀判断：
-
-```text
-事实是什么，放 Context；
-值是多少，用参数；
-单个独立判断，用 Rule；
-同一决策点的 Rule，用 Policy 承载；
-怎么算，用策略；
-怎么做，用策略；
-状态怎么变，用状态机；
-多个因素叠加，用 Pipeline；
-多维共同决定算法，用决策表 + 策略；
-只是组合限制，不要做策略；
-只是数值不同，不要做策略。
-Strategy 单一抽象，不是单一方法；
-简单 Rule 收进 Policy，复用 Rule 才外置；
-小接口复用，组合接口收束；
-成套能力用抽象工厂。
-```
-
----
-
 ## Pattern Selection Details
 
 完成维度建模后，再按以下顺序分析 Rule / Policy / Config / Strategy 等模式边界。
 
-### Step 1: Identify Business Decision Points
+### Identify Business Decision Points
 
 先列出当前业务中真正的决策点。
 
@@ -403,7 +378,7 @@ Examples:
 
 ---
 
-### Step 2: Extract Fact Dimensions
+### Extract Fact Dimensions
 
 列出参与这些决策点的事实维度。
 
@@ -425,7 +400,7 @@ orderStatus
 
 ---
 
-### Step 3: Classify Each Dimension's Role
+### Classify Each Dimension's Role
 
 对每个决策点，判断每个维度的角色：
 
@@ -467,7 +442,7 @@ Policy 不是维度角色；它是同一决策点的规则边界，简单 Rule �
 
 ---
 
-### Step 4: Separate Rule From Strategy
+### Separate Rule From Strategy
 
 看分支结果。
 
