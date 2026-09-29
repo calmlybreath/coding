@@ -1,6 +1,6 @@
 ---
 name: complex-business-dimension-modeling
-description: 分析复杂业务中的维度边界、多维变化、非正交关系以及 Rule、Policy、Strategy 边界，帮助拆分过粗维度、识别强耦合组合、建立层级维度、拆分业务 Context，并判断逻辑应该建模为 Context、Rule、Policy、Config、Decision Table、Resolver、Pipeline、Strategy 或 State Machine。适用于优惠、价格、税费、支付、物流、权益、订单状态、发票、风控等复杂业务建模场景；当用户提到维度拆分、正交或非正交、组合爆炸、巨型 Context、规则与策略边界、复杂 if/else 或希望获得 Go 代码结构时，应优先使用本 Skill。代码示例默认使用 Go。
+description: 分析复杂业务中的维度边界、多维变化、非正交关系以及 Rule、Policy、Config、Strategy 边界，帮助拆分过粗维度、识别强耦合组合、建立层级维度、拆分业务 Context，并判断逻辑应该建模为 Context、Rule、Policy、Config、Decision Table、Resolver、Pipeline、Strategy 或 State Machine。适用于优惠、价格、税费、支付、物流、权益、订单状态、发票、风控等复杂业务建模场景；当用户提到维度拆分、正交或非正交、组合爆炸、巨型 Context、规则与策略边界、复杂 if/else 或希望获得 Go 代码结构时，应优先使用本 Skill。代码示例默认使用 Go。
 ---
 
 # 复杂业务维度建模
@@ -26,7 +26,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 
 先判断是复杂建模问题，还是一个实现内的局部差异。只有一个决策点、少量分支时，直接给最小实现建议，不展开完整维度矩阵。
 
-同一份数据、同一条查询、同一调用方，只是取值口径或读法不同，默认合在一个实现里。不要因为接口“以后可能变胖”提前拆；等独立变化真实出现后再抽象。
+同一份数据、同一条查询、同一调用方，只是取值口径或读法不同，默认合在一个实现里。不要因为接口"以后可能变胖"提前拆；等独立变化真实出现后再抽象。
 
 ## 输出形态约定
 
@@ -42,19 +42,18 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 | 问题特征 | 需要读取 |
 |---|---|
 | 维度过粗、强耦合、父子分类、巨型 Context | `references/dimension-and-context.md` |
-| Rule、Policy、Config、Strategy 的职责不清，Strategy 方法边界或 Rule 放置不清 | `references/pattern-selection.md` |
-| 非正交组合、配置矩阵、组合爆炸、多维选策略 | `references/non-orthogonal-dimensions.md` |
-| 万能 Strategy、会员等级等典型设计问题 | `references/design-smells-and-examples.md` |
-| 状态组合、生命周期、规则生效时间、历史快照 | `references/state-and-temporal-dimensions.md` |
+| 非正交组合、配置矩阵、组合爆炸、多维选策略、中间业务模型 | `references/dimension-and-context.md` |
+| Rule、Policy、Config、Strategy 职责不清，万能 Strategy，成套能力注册 | `references/pattern-selection.md` |
 | 需要 Go 接口、Resolver、Decision Table、Pipeline、组合接口或抽象工厂代码 | `references/go-implementation.md` |
 | 需要输出完整分析报告 | `references/output-format.md` |
+| 状态流转、生命周期、规则生效时间、历史快照（可选独立专题） | `references/state-and-temporal-dimensions.md` |
 
 加载原则：
 
-- 涉及维度拆分时，先读 `dimension-and-context.md`，再读其他相关文件。
+- 涉及维度拆分或非正交关系时，先读 `dimension-and-context.md`。
 - 涉及非正交关系时，同时读取 `pattern-selection.md`，避免把组合限制误做成策略。
-- 涉及状态流转或历史规则时，读取 `state-and-temporal-dimensions.md`。
 - 需要生成 Go 代码时，先完成业务建模，再读取 `go-implementation.md`。
+- `state-and-temporal-dimensions.md` 是独立专题，只在涉及状态流转或时间快照时读取，不属于维度建模主流程。
 - 用户只问局部问题时，只加载并输出相关部分。
 
 ## 分析流程
@@ -67,7 +66,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 - 合理假设；
 - 待确认问题。
 
-不要凭空补齐业务规则。
+不要凭空补齐业务规则。上游数据库或协议给的形状若与业务含义不符，在建模层翻译，不要求改上游。
 
 ### Step 1：识别业务决策点
 
@@ -87,6 +86,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 | 下单 | 优惠是否可用？ | 会员等级、地区、活动类型 | allow / deny + 原因 |
 | 计价 | 税费怎么算？ | 地区、商品税类、主体类型、金额 | 金额 + 命中的税务模型 |
 | 支付 | 支付方式是否可用？ | 渠道、支付方式 | allow / deny + 原因 |
+| 履约 | 订单状态如何流转？ | 当前状态、事件 | 新状态 |
 
 三格填写要求：
 
@@ -96,7 +96,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 
 若一个决策点的「输入事实」横跨不相关领域，或「决策输出」混了 allow/deny 与金额等不同类型，说明这个决策点太粗，应先拆成多个决策点再各填三格。
 
-不要问“会员等级是不是策略”，而要问“会员等级在当前决策点中起什么作用”。
+不要问"会员等级是不是策略"，而要问"会员等级在当前决策点中起什么作用"。
 
 ### Step 2：识别事实维度
 
@@ -112,11 +112,11 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 
 如果筛选后只是一个决策点内的少量差异，回到「适用判断」给最小实现。
 
-需要详细判断信号和案例时，读取 `references/dimension-and-context.md`。
-
 ### Step 3：维度健康度分析（核心）
 
 在判断维度应该建模为 Context、Rule、Policy、Config、Strategy 之前，必须先确认维度本身拆得是否正确：是否太粗、是否太散、强耦合维度是否被拆散、是否应该分层、Context 是否过大。
+
+这是全流程唯一需要**跨决策点对账**的地方：把各决策点在 Step 1 列出的「输入事实」摆到一起，看同一个字段是否被不同决策点各取一条轴。这类问题在单个决策点内看不出来——枚举值越来越长、一个字段被多个不相关决策点解析，都是这里的信号。
 
 对每个问题维度按「原始 → 问题 → 目标」写推理段，四类处理：
 
@@ -127,7 +127,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 | 层级被平铺 | 建立层级维度，上层分发流程、下层决定规则与参数 |
 | Context 过大 | 按决策点拆 Context，只放该决策点需要的事实 |
 
-判断信号、反例与案例见 `references/dimension-and-context.md`。
+同一个维度在不同决策点可以扮演不同角色；不同决策点用不同 Context。Context 是决策点的事实快照，不是数据库 Entity。判断信号、反例与案例见 `references/dimension-and-context.md`。
 
 ### Step 4：维度角色与非正交处理（核心）
 
@@ -143,7 +143,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 | 多个步骤可组合叠加 | Pipeline |
 | 状态与事件决定合法迁移 | State Machine |
 
-同一个维度在不同决策点可以扮演不同角色，不要问“它属于哪个模式”。
+不要问"它属于哪个模式"，要问"它在这个决策点里起什么作用"。
 
 Policy 不是字段或维度角色：识别完规则后，把同一决策点的简单 Rule 直接收进 Policy；只有需要跨 Policy 复用、配置或独立编排时，才为 Rule 创建独立类型。
 
@@ -156,9 +156,8 @@ Policy 不是字段或维度角色：识别完规则后，把同一决策点的�
 | 多个因素分别贡献结果 | Pipeline |
 | 多维共同选择互斥算法 | Decision Table + Strategy |
 | 组合形成稳定业务概念 | Intermediate Model + Resolver |
-| 状态与事件决定合法迁移 | State Machine |
 
-边界不清时读 `pattern-selection.md`；需要判断组合爆炸或中间模型时读 `non-orthogonal-dimensions.md`；涉及状态组合或时间快照时读 `state-and-temporal-dimensions.md`。
+非正交关系的判定信号、决策表与中间模型案例见 `references/dimension-and-context.md`；模式边界不清时读 `references/pattern-selection.md`。
 
 ### Step 5：设计落地结构
 
@@ -202,32 +201,6 @@ Rule 描述判断条件，Policy 承载一个决策点的规则，Strategy 执�
 如果某项改动会牵动多个不相关位置，说明维度或决策点还没拆对，回到 Step 3 重做。
 
 同时检查是否拆过头：单实现接口、一条判断一个 Rule、把同一份数据和查询拆进多个实现。
-
-## 核心原则
-
-### 维度建模
-
-1. 先判断场景是否值得展开完整建模；只有一个决策点、少量分支时给最小实现。
-2. 不要把所有输入字段都当维度；只被读取、透传、展示的字段是普通数据字段。
-3. 决策点必须填满三格（决策问题｜输入事实｜决策输出），并按流程时间轴排序；输入跨域或输出类型混杂说明太粗，要拆。
-4. 一个字段混合多个业务含义、且这些含义独立变化时，要拆细。
-5. 多个字段总是一起表达稳定业务语义时，优先保留原始事实并派生中间模型。
-6. 有父子分类的维度要分层，不平铺成超长枚举；上层分发大流程，下层决定规则与参数。
-7. 不同决策点用不同 Context；Context 是决策点的事实快照，不是数据库 Entity。
-8. 先做维度建模，再判断 Rule / Policy / Config / Strategy；维度建错，后面全会变形。
-
-### 模式选择
-
-9. 事实放 Context；值是参数；能不能是 Rule；同一决策点的规则用 Policy 承载；怎么算是 Strategy；怎么变是 State Machine。
-10. 简单 Rule 直接写进 Policy；只有跨 Policy 复用、独立配置或编排时才抽独立 Rule 类型。
-11. 参数差异不是 Strategy；限制条件也不是 Strategy。
-12. 多个因素叠加用 Pipeline；多维共同决定互斥算法用 Decision Table + Strategy。
-13. 组合有独立业务语义才抽中间模型；不为笛卡尔积组合建策略类型。
-14. Strategy 围绕动词或决策点，不用大名词（如 UserStrategy、RegionStrategy）。
-15. Strategy 追求单一抽象与高内聚，不是单一方法：多方法须满足同一能力、同一变化原因、同一生命周期、都必须提供、调用方整体使用。
-16. 跨决策点的方法要拆；必须成套提供的能力用小接口加组合接口 / 模块工厂，并通过构造校验与枚举覆盖测试收束。
-17. Resolver 拥有选择逻辑，不散落在业务流程里。
-18. 状态字段是事实，状态机是行为模型，不要混为一谈，也不要把多个独立状态做成组合枚举。
 
 ## 自检清单
 

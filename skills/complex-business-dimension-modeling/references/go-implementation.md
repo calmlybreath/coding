@@ -1,29 +1,16 @@
 # Go 实现指南
 
-## 目录
+只给关键接口、分发点和结构体形状；代码为示意，按需调整。
 
-- 小接口
-- 高内聚多方法接口
-- 组合接口与抽象工厂
-- Resolver 选择逻辑
-- 多维 Decision Table
-- 累加型 Pipeline
-
-## 1. Prefer Small Interfaces
-
-Go 中接口应该小而清晰。
-
-Good:
+## 1. 小接口优先
 
 ```go
+// Good
 type PaymentStrategy interface {
     Pay(ctx PaymentContext) (PayResult, error)
 }
-```
 
-Bad:
-
-```go
+// Bad：把不同决策点塞进一个接口
 type PaymentStrategy interface {
     Pay(ctx PaymentContext) (PayResult, error)
     Refund(ctx RefundContext) (RefundResult, error)
@@ -33,13 +20,11 @@ type PaymentStrategy interface {
 }
 ```
 
-除非这些方法确实属于同一个生命周期模型，并且每种支付方式都必须实现。
+除非这些方法确实属于同一生命周期，且每种实现都必须提供。
 
----
+## 2. 允许高内聚的多方法接口
 
-## 2. Allow Cohesive Multi-Method Strategies
-
-“小接口优先”不等于“接口只能有一个方法”。当多个方法属于同一业务能力、同一变化原因和同一生命周期，而且所有实现都必须提供时，可以使用高内聚的多方法接口。
+"小接口优先"不等于"只能有一个方法"。下述方法属于同一能力、同一变化原因、同一生命周期，且所有实现都必须提供：
 
 ```go
 type PaymentLifecycleStrategy interface {
@@ -49,57 +34,27 @@ type PaymentLifecycleStrategy interface {
 }
 ```
 
-如果退款和对账不属于所有支付实现，或者具有独立变化原因，则拆开：
+若退款、对账不由所有实现提供、或变化原因独立，则拆开：
 
 ```go
-type RefundStrategy interface {
-    Refund(ctx RefundContext) (RefundResult, error)
-}
-
-type ReconcileStrategy interface {
-    Reconcile(ctx ReconcileContext) error
-}
+type RefundStrategy interface { Refund(ctx RefundContext) (RefundResult, error) }
+type ReconcileStrategy interface { Reconcile(ctx ReconcileContext) error }
 ```
 
-策略私有且依赖内部实现细节的前置校验可以保留在实现内部：
+依赖实现细节的前置校验留在实现内部；跨多个 Strategy 共用的渠道、地区、资格限制抽为 Rule，多个 Rule 组成同一决策时由 Policy 组合。
+
+## 3. 组合接口与抽象工厂
+
+调用方依赖自己真正使用的小接口：
 
 ```go
-func (s PaypalPaymentStrategy) Authorize(ctx PaymentContext) (Authorization, error) {
-    if err := s.validateAccount(ctx); err != nil {
-        return Authorization{}, err
-    }
-
-    return s.client.Authorize(ctx)
-}
+type BuyStrategy interface { Buy(ctx BuyContext) (BuyResult, error) }
+type PriceStrategy interface { CalculatePrice(ctx PriceContext) (Money, error) }
+type InventoryStrategy interface { Reserve(ctx InventoryContext) error }
+type FulfillmentStrategy interface { Fulfill(ctx FulfillmentContext) error }
 ```
 
-跨多个支付 Strategy 共用的渠道、地区或资格限制可抽为 Rule；多个 Rule 共同形成支付资格决策时，再由 `PaymentEligibilityPolicy` 组合。
-
----
-
-## 3. Compose Small Interfaces And Provide Complete Modules
-
-调用方应依赖自己真正使用的小接口：
-
-```go
-type BuyStrategy interface {
-    Buy(ctx BuyContext) (BuyResult, error)
-}
-
-type PriceStrategy interface {
-    CalculatePrice(ctx PriceContext) (Money, error)
-}
-
-type InventoryStrategy interface {
-    Reserve(ctx InventoryContext) error
-}
-
-type FulfillmentStrategy interface {
-    Fulfill(ctx FulfillmentContext) error
-}
-```
-
-如果同一个实现对象必须具备完整能力，可以用组合接口收束：
+若同一实现对象必须具备完整能力，用组合接口收束并做编译期检查：
 
 ```go
 type CompleteProductCapabilities interface {
@@ -119,7 +74,7 @@ type DigitalProductCapabilities struct {
 var _ CompleteProductCapabilities = (*DigitalProductCapabilities)(nil)
 ```
 
-如果这些能力由不同对象实现，使用模块工厂统一提供，而不是分散注册：
+若这些能力由不同对象实现，用模块工厂统一提供，不要分散注册：
 
 ```go
 type ProductTypeModule interface {
@@ -141,41 +96,17 @@ type DefaultProductTypeModule struct {
 }
 
 func NewProductTypeModule(
-    buy BuyStrategy,
-    price PriceStrategy,
-    inventory InventoryStrategy,
-    fulfillment FulfillmentStrategy,
+    buy BuyStrategy, price PriceStrategy,
+    inventory InventoryStrategy, fulfillment FulfillmentStrategy,
 ) (ProductTypeModule, error) {
     if buy == nil || price == nil || inventory == nil || fulfillment == nil {
         return nil, errors.New("incomplete product strategy module")
     }
-
-    return &DefaultProductTypeModule{
-        buy:         buy,
-        price:       price,
-        inventory:   inventory,
-        fulfillment: fulfillment,
-    }, nil
+    return &DefaultProductTypeModule{buy, price, inventory, fulfillment}, nil
 }
 
-func (m *DefaultProductTypeModule) BuyStrategy() BuyStrategy {
-    return m.buy
-}
-
-func (m *DefaultProductTypeModule) PriceStrategy() PriceStrategy {
-    return m.price
-}
-
-func (m *DefaultProductTypeModule) InventoryStrategy() InventoryStrategy {
-    return m.inventory
-}
-
-func (m *DefaultProductTypeModule) FulfillmentStrategy() FulfillmentStrategy {
-    return m.fulfillment
-}
-
-var _ ProductTypeModule = (*DefaultProductTypeModule)(nil)
-var _ ProductStrategyFactory = (*DefaultProductStrategyFactory)(nil)
+// 每个能力一个 getter：BuyStrategy() / PriceStrategy() / InventoryStrategy() / FulfillmentStrategy()
+// 均直接返回对应字段，此处省略。
 ```
 
 注册表只注册完整模块：
@@ -185,32 +116,26 @@ type DefaultProductStrategyFactory struct {
     modules map[ProductType]ProductTypeModule
 }
 
-func (f DefaultProductStrategyFactory) Create(
-    productType ProductType,
-) (ProductTypeModule, error) {
+func (f DefaultProductStrategyFactory) Create(productType ProductType) (ProductTypeModule, error) {
     module, ok := f.modules[productType]
     if !ok {
         return nil, errors.New("unsupported product type")
     }
-
     return module, nil
 }
+
+var _ ProductTypeModule = (*DefaultProductTypeModule)(nil)
 ```
 
 注意：
 
-- 编译期接口检查只能保证方法集完整，不能保证返回的 Strategy 非空；
-- 构造 `ProductTypeModule` 时还需要校验各 Strategy 均已提供；
-- 新增 `ProductType` 时，应在一个装配入口注册完整模块，并用测试覆盖所有枚举值；
+- 编译期接口检查只能保证方法集完整，不能保证返回的 Strategy 非空；构造 `ProductTypeModule` 时还要校验各 Strategy 均已提供；
+- 新增 `ProductType` 时在一个装配入口注册完整模块，并用测试覆盖所有枚举值；
 - 不要因为能力必须成套提供，就把不同决策点合并成万能 `ProductStrategy`。
 
----
+## 4. Resolver 拥有选择逻辑
 
-## 4. Resolver Should Own Selection Logic
-
-策略选择逻辑不要散落在业务流程里。
-
-Good:
+策略选择逻辑不要散落在业务流程里。一维分发通常就是一个 map 查找：
 
 ```go
 type PaymentStrategyResolver struct {
@@ -222,27 +147,23 @@ func (r PaymentStrategyResolver) Resolve(method PaymentMethod) (PaymentStrategy,
     if !ok {
         return nil, errors.New("unsupported payment method")
     }
-
     return strategy, nil
 }
 ```
-
-Usage:
 
 ```go
 strategy, err := resolver.Resolve(ctx.PaymentMethod)
 if err != nil {
     return PayResult{}, err
 }
-
 return strategy.Pay(ctx)
 ```
 
----
+只有一个实现、或只调用一次时，不要为它单独建 Resolver。
 
-## 5. Use Decision Table For Multi-Dimension Selection
+## 5. 多维选择用 Decision Table
 
-当多个维度共同决定策略时，使用决策表。
+多个维度共同决定策略时用决策表。
 
 ```go
 type TaxDecisionRule struct {
@@ -257,20 +178,15 @@ func (r TaxDecisionRule) Match(ctx TaxContext) bool {
     if r.Region != nil && *r.Region != ctx.Region {
         return false
     }
-
     if r.ProductTaxCategory != nil && *r.ProductTaxCategory != ctx.ProductTaxCategory {
         return false
     }
-
     if r.AccountType != nil && *r.AccountType != ctx.AccountType {
         return false
     }
-
     return true
 }
 ```
-
-Resolver:
 
 ```go
 type TaxModelResolver struct {
@@ -283,24 +199,20 @@ func (r TaxModelResolver) Resolve(ctx TaxContext) (TaxModel, error) {
             return rule.Model, nil
         }
     }
-
     return "", errors.New("no tax model matched")
 }
 ```
 
 要求：
 
-- 决策表需要有优先级；
-- 更具体规则优先；
+- 决策表要有优先级，更具体规则优先；
 - 默认规则必须显式；
-- 未匹配时必须返回错误；
+- 未匹配必须返回错误；
 - 不要把大量 if-else 散落在业务服务里。
 
----
+## 6. 累加逻辑用 Pipeline
 
-## 6. Use Pipeline For Accumulative Logic
-
-当多个处理步骤可以叠加时，用 Pipeline。
+多个处理步骤可以叠加时用 Pipeline。
 
 ```go
 type TaxPipeline struct {
@@ -309,33 +221,17 @@ type TaxPipeline struct {
 
 func (p TaxPipeline) Calculate(ctx TaxContext) (TaxResult, error) {
     result := TaxResult{}
-
     for _, step := range p.steps {
         if !step.Supports(ctx) {
             continue
         }
-
         if err := step.Apply(ctx, &result); err != nil {
             return TaxResult{}, err
         }
     }
-
     return result, nil
 }
 ```
 
-适合场景：
-
-```text
-基础费用 + 地区附加费 + 商品特殊税 + 企业减免
-```
-
-不适合场景：
-
-```text
-只能选择一个互斥算法
-```
-
-互斥算法应该使用 Strategy 或 Decision Table + Strategy。
-
----
+适合：`基础费用 + 地区附加费 + 商品特殊税 + 企业减免`。
+不适合：只能选择一个互斥算法——互斥算法用 Strategy 或 Decision Table + Strategy。
