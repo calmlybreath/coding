@@ -44,6 +44,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 | 维度过粗、强耦合、父子分类、巨型 Context | `references/dimension-and-context.md` |
 | 非正交组合、配置矩阵、组合爆炸、多维选策略、中间业务模型 | `references/dimension-and-context.md` |
 | Rule、Policy、Config、Strategy 职责不清，万能 Strategy，成套能力注册 | `references/pattern-selection.md` |
+| 新需求要做领域建模、划实体 / 值对象 / 聚合，或困惑「哪些放 Entity」 | `references/domain-building-blocks.md` |
 | 需要 Go 接口、Resolver、Decision Table、Pipeline、组合接口或抽象工厂代码 | `references/go-implementation.md` |
 | 需要输出完整分析报告 | `references/output-format.md` |
 | 状态流转、生命周期、规则生效时间、历史快照（可选独立专题） | `references/state-and-temporal-dimensions.md` |
@@ -53,6 +54,7 @@ description: 分析复杂业务中的维度边界、多维变化、非正交关�
 - 涉及维度拆分或非正交关系时，先读 `dimension-and-context.md`。
 - 涉及非正交关系时，同时读取 `pattern-selection.md`，避免把组合限制误做成策略。
 - 需要生成 Go 代码时，先完成业务建模，再读取 `go-implementation.md`。
+- 领域构件（实体 / 值对象 / 聚合）是决策维度的地基；做新需求、构件未定时先读 `domain-building-blocks.md`（其中判断类逻辑仍指向 `pattern-selection.md`）。
 - `state-and-temporal-dimensions.md` 是独立专题，只在涉及状态流转或时间快照时读取，不属于维度建模主流程。
 - 用户只问局部问题时，只加载并输出相关部分。
 
